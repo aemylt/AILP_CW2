@@ -47,7 +47,8 @@ solve_task_astar(go(Target),Current,RR,Cost,NewPos) :-
    children(P, Children, RPath),
    calc_children_costs_astar(Target, Cur, Children, ChildrenCosts),
    append(OtherRPaths, ChildrenCosts, NewRPath),
-   solve_task_astar(go(Target), NewRPath, RR, Cost, NewPos).
+   sort(NewRPath, SortedRPath),
+   solve_task_astar(go(Target), SortedRPath, RR, Cost, NewPos).
 
 % (Children, [c(C,P),P])
 calc_children_costs_astar(Target, Cur, Children, ChildCosts) :-

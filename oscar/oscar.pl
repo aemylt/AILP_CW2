@@ -11,9 +11,16 @@ candidate_number(17655).
 solve_task(Task,Cost):-
 	agent_current_position(oscar,P),
    %solve_task_bt(Task,[c(0,P),P],0,R,Cost,_NewPos),!,	% prune choice point for efficiency
-   solve_task_bf(Task,[[c(0,P), P]],R,Cost,_NewPos),!,
+   solve_task_top(Task,[[c(0,P), P]],R,Cost,_NewPos),!,
 	reverse(R,[_Init|Path]),
 	agent_do_moves(oscar,Path).
+
+solve_task_top(go(Target),[[c(0,P), P]],R,Cost,NewPos) :-
+    map_distance(P, Target, Dist),
+    solve_task_astar(go(Target),[[Dist, c(0,P), P]],R,Cost,NewPos).
+
+solve_task_top(Task,[[c(0,P), P]],R,Cost,NewPos) :-
+    solve_task_bf(Task,[[c(0,P), P]],R,Cost,NewPos).
 
 %% backtracking depth-first search, needs to be changed to agenda-based A*
 solve_task_bt(Task,Current,Depth,RPath,[cost(Cost),depth(Depth)],NewPos) :-
@@ -25,6 +32,33 @@ solve_task_bt(Task,Current,D,RR,Cost,NewPos) :-
 	D1 is D+1,
 	F1 is F+C,
 	solve_task_bt(Task,[c(F1,P1),R|RPath],D1,RR,Cost,NewPos). % backtracking search
+
+solve_task_astar(Task,Current,RPath,CostList,NewPos) :-
+   % Because this is bf the first item in RPath will always be the shortest
+   Current = [CurList | _],
+   CurList = [ _ | Cur],
+   Cur = [c(Depth, _) | _], 
+   CostList = [cost(Cost), depth(Depth)],
+   achieved(Task,Cur,RPath,Cost,NewPos).
+solve_task_astar(go(Target),Current,RR,Cost,NewPos) :-
+   Current = [CurList | OtherRPaths],
+   CurList = [_ | Cur],
+   Cur = [c(_,P)|RPath],
+   children(P, Children, RPath),
+   calc_children_costs_astar(Target, Cur, Children, ChildrenCosts),
+   append(OtherRPaths, ChildrenCosts, NewRPath),
+   solve_task_astar(go(Target), NewRPath, RR, Cost, NewPos).
+
+% (Children, [c(C,P),P])
+calc_children_costs_astar(Target, Cur, Children, ChildCosts) :-
+   do_children_costs_astar(Target, Cur, Children, [], ChildCosts).
+
+do_children_costs_astar(_, _, [], ChildCosts, ChildCosts).
+do_children_costs_astar(Target, Cur, [Child|Children], PastCosts, ChildCosts) :-
+   Cur = [c(OldDepth, _)|RPath],
+   Depth is OldDepth+1,
+   map_distance(Child, Target, Dist),
+   do_children_costs_astar(Target, Cur, Children, [[Dist, c(Depth, Child) | [Child|RPath]] | PastCosts], ChildCosts).
 
 solve_task_bf(Task,Current,RPath,CostList,NewPos) :-
    % Because this is bf the first item in RPath will always be the shortest

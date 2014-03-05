@@ -10,12 +10,13 @@ candidate_number(17655).
 
 solve_task(Task,Cost):-
 	agent_current_position(oscar,P),
-	solve_task_bt(Task,[c(0,P),P],0,R,Cost,_NewPos),!,	% prune choice point for efficiency
+   %solve_task_bt(Task,[c(0,P),P],0,R,Cost,_NewPos),!,	% prune choice point for efficiency
+   solve_task_bf(Task,[[c(0,P), P]],R,Cost,_NewPos),!,
 	reverse(R,[_Init|Path]),
 	agent_do_moves(oscar,Path).
 
 %% backtracking depth-first search, needs to be changed to agenda-based A*
-solve_task_bt(Task,Current,Depth,RPath,[cost(Cost),depth(Depth)],NewPos) :- 
+solve_task_bt(Task,Current,Depth,RPath,[cost(Cost),depth(Depth)],NewPos) :-
 	achieved(Task,Current,RPath,Cost,NewPos).
 solve_task_bt(Task,Current,D,RR,Cost,NewPos) :-
 	Current = [c(F,P)|RPath],
@@ -25,6 +26,33 @@ solve_task_bt(Task,Current,D,RR,Cost,NewPos) :-
 	F1 is F+C,
 	solve_task_bt(Task,[c(F1,P1),R|RPath],D1,RR,Cost,NewPos). % backtracking search
 
+solve_task_bf(Task,Current,RPath,CostList,NewPos) :-
+   % Because this is bf the first item in RPath will always be the shortest
+   Current = [Cur | _],
+   Cur = [c(Depth, _) | _],
+   CostList = [cost(Cost), depth(Depth)],
+   achieved(Task,Cur,RPath,Cost,NewPos).
+solve_task_bf(Task,Current,RR,Cost,NewPos) :-
+   Current = [Cur | OtherRPaths],
+   Cur = [c(_,P)|RPath],
+   children(P, Children, RPath),
+   calc_children_costs(Cur, Children, ChildrenCosts),
+   append(OtherRPaths, ChildrenCosts, NewRPath),
+   solve_task_bf(Task, NewRPath, RR, Cost, NewPos).
+
+children(Current, Children, RPath) :-
+   findall(NewPos, map_adjacent(Current, NewPos, empty), AllChildren),
+   filter_children(AllChildren, RPath, Children).
+
+% (Children, [c(C,P),P])
+calc_children_costs(Cur, Children, ChildCosts) :-
+   do_children_costs(Cur, Children, [], ChildCosts).
+
+do_children_costs(_, [], ChildCosts, ChildCosts).
+do_children_costs(Cur, [Child|Children], PastCosts, ChildCosts) :-
+   Cur = [c(OldDepth, _)|RPath],
+   Depth is OldDepth+1,
+   do_children_costs(Cur, Children, [[c(Depth, Child) | [Child|RPath]] | PastCosts], ChildCosts).
 
 achieved(go(Exit),Current,RPath,Cost,NewPos) :-
 	Current = [c(Cost,NewPos)|RPath],
@@ -41,6 +69,15 @@ achieved(find(O),Current,RPath,Cost,NewPos) :-
 search(F,N,N,1):-
 	map_adjacent(F,N,empty).
 
+filter_children(Children, RPath, Valids) :-
+   filter_loop(Children, RPath, [], Valids).
+
+filter_loop([], _, Valids, Valids).
+filter_loop([Child|Children], RPath, Filtered, Valids) :-
+   (\+ memberchk(Child, RPath) ->
+      filter_loop(Children, RPath, [Child|Filtered], Valids)
+   ; filter_loop(Children, RPath, Filtered, Valids)
+   ).
 
 %%% command shell %%%
 

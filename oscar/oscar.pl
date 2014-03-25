@@ -4,14 +4,14 @@
  *		Students edit this program to complete the assignment.
  */
 
-consult(wp).
+:-consult(wp).
 
 candidate_number(17655).
 
 solve_task(Task,Cost):-
 	agent_current_position(oscar,P),
    %solve_task_bt(Task,[c(0,P),P],0,R,Cost,_NewPos),!,	% prune choice point for efficiency
-   solve_task_top(Task,[[c(0,P), P]],R,Cost,_NewPos),!,
+   solve_task_top(Task,[[c(0,P), P]],R,Cost,_NewPos),
 	reverse(R,[_Init|Path]),
 	agent_do_moves(oscar,Path).
 
@@ -37,7 +37,7 @@ solve_task_astar(Task,Current,RPath,CostList,NewPos) :-
    % Because this is bf the first item in RPath will always be the shortest
    Current = [CurList | _],
    CurList = [ _ | Cur],
-   Cur = [c(Depth, _) | _], 
+   Cur = [c(Depth, _) | _],
    CostList = [cost(Cost), depth(Depth)],
    achieved(Task,Cur,RPath,Cost,NewPos).
 solve_task_astar(go(Target),Current,RR,Cost,NewPos) :-
@@ -113,6 +113,44 @@ filter_loop([Child|Children], RPath, Filtered, Valids) :-
       filter_loop(Children, RPath, [Child|Filtered], Valids)
    ; filter_loop(Children, RPath, Filtered, Valids)
    ).
+
+actor_data(actor_name, Links) :-
+   actor(actor_name),
+   is_list(Links).
+
+% find_identity(-A) <- find hidden identity by repeatedly calling agent_ask_oracle(oscar,o(1),link,L)
+find_identity(A):-
+   agent_current_position(oscar,P),
+   findall(A, actor(A), ActorNames),
+   create_actor_data(ActorNames, Actors),
+   keep_filtering_actors(Actors, Actor),
+   Actor = actor_data(A, _),
+   !.
+
+keep_filtering_actors([Actor], Actor).
+keep_filtering_actors(Unfiltered, Actor) :-
+   solve_task(find(o(I)), _),
+   agent_ask_oracle(oscar, o(I), link, Link),
+   filter_actors(Unfiltered, Link, Filtered),
+   keep_filtering_actors(Filtered, Actor).
+
+create_actor_data(ActorNames, Actors) :-
+   do_create_actor_data(ActorNames, [], Actors).
+
+do_create_actor_data([], Actors, Actors).
+do_create_actor_data([CurActor|ActorNames], Processed, Actors) :-
+   wp(CurActor, WT),
+   findall(L, wt_link(WT, L), Links),
+   do_create_actor_data(ActorNames, [actor_data(CurActor, Links)|Processed], Actors).
+
+filter_actors(Unfiltered, Link, Filtered) :-
+   do_filter_actors(Unfiltered, Link, [], Filtered).
+
+do_filter_actors([], _, Filtered, Filtered).
+do_filter_actors([Actor|Unfiltered], Link, Filtering, Filtered) :-
+   Actor = actor_data(_,Links),
+   (memberchk(Link, Links) -> do_filter_actors(Unfiltered, Link, [Actor|Filtering], Filtered)
+   ; do_filter_actors(Unfiltered, Link, Filtering, Filtered)).
 
 %%% command shell %%%
 

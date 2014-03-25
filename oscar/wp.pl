@@ -160,43 +160,6 @@ random_link(A,L):-
 	random_member(L,Ls).
 
 
-%%% Your solution goes here
-
-actor_data(actor_name, Links) :-
-   actor(actor_name),
-   is_list(Links).
-
-% find_identity(-A) <- find hidden identity by repeatedly calling agent_ask_oracle(oscar,o(1),link,L)
-find_identity(A):-
-   findall(A, actor(A), ActorNames),
-   create_actor_data(ActorNames, Actors),
-   keep_filtering_actors(Actors, Actor),
-   Actor = actor_data(A, _),
-   !.
-
-keep_filtering_actors([Actor], Actor).
-keep_filtering_actors(Unfiltered, Actor) :-
-   agent_ask_oracle(oscar, o(1), link, Link),
-   filter_actors(Unfiltered, Link, Filtered),
-   keep_filtering_actors(Filtered, Actor).
-
-create_actor_data(ActorNames, Actors) :-
-   do_create_actor_data(ActorNames, [], Actors).
-
-do_create_actor_data([], Actors, Actors).
-do_create_actor_data([CurActor|ActorNames], Processed, Actors) :-
-   wp(CurActor, WT),
-   findall(L, wt_link(WT, L), Links),
-   do_create_actor_data(ActorNames, [actor_data(CurActor, Links)|Processed], Actors).
-
-filter_actors(Unfiltered, Link, Filtered) :-
-   do_filter_actors(Unfiltered, Link, [], Filtered).
-
-do_filter_actors([], _, Filtered, Filtered).
-do_filter_actors([Actor|Unfiltered], Link, Filtering, Filtered) :-
-   Actor = actor_data(_,Links),
-   (memberchk(Link, Links) -> do_filter_actors(Unfiltered, Link, [Actor|Filtering], Filtered)
-   ; do_filter_actors(Unfiltered, Link, Filtering, Filtered)).
 
 %%% Testing
 

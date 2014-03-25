@@ -4,9 +4,9 @@
  *		Students edit this program to complete the assignment.
  */
 
+consult(wp).
 
 candidate_number(17655).
-
 
 solve_task(Task,Cost):-
 	agent_current_position(oscar,P),

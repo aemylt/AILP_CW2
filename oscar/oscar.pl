@@ -11,19 +11,21 @@ candidate_number(17655).
 map_object(c(_), p(_, _)).
 map_object(o(_), p(_, _)).
 
-% TODO: Check Path is a list
-object_path(map_object(_, _), _).
+object_path(map_object(_, _), Path) :-
+	is_list(Path).
 
-% List of oracle positions and list of charger positions
-objects_list(_, _).
+objects_list(Oracles, Chargers) :-
+	is_list(Oracles),
+	is_list(Chargers).
 
-% Depth and position list
-path(_, _).
+path(Depth, Path) :-
+	integer(Depth),
+	is_list(Path).
 
 solve_task(Task,Cost):-
 	agent_current_position(oscar,P),
-  %solve_task_bt(Task,[c(0,P),P],0,R,Cost,_NewPos),!,	% prune choice point for efficiency
-  solve_task_top(Task,[[c(0,P), P]],R,Cost,_NewPos),
+	%solve_task_bt(Task,[c(0,P),P],0,R,Cost,_NewPos),!,	% prune choice point for efficiency
+	solve_task_top(Task,[[c(0,P), P]],R,Cost,_NewPos),
 	reverse(R,[_Init|Path]),
 	agent_do_moves(oscar,Path).
 
@@ -73,38 +75,73 @@ do_children_costs_astar(Target, Cur, [Child|Children], PastCosts, ChildCosts) :-
    map_distance(Child, Target, Dist),
    do_children_costs_astar(Target, Cur, Children, [[Dist, c(Depth, Child) | [Child|RPath]] | PastCosts], ChildCosts).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Finds a list of objects that we haven't already found.
+%% In the case of oracles they haven't already been visited.
+%% @param FoundObjects [map_object]: A list of objects we already know about
+%% @returns MapObjects [map_object]: The existing list of objects with the new
+%list appended to it
+%% @param CurPos p: Current agent position
+%% @returns OraclePath [p]: The path to the nearest oracle
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 do_find_stuff(FoundObjects, MapObjects, CurPos, OraclePath) :-
 	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], [], OraclePath).
 
 find_stuff(MapObjects, MapObjects, Paths, OraclePath, OraclePath) :-
 	Paths = [NextPath | _],
 	NextPath = path(Depth, _),
-	Depth >= 10,
+	Depth >= 10, % Limits the search depth to 10
 	!.
 find_stuff(FoundObjects, MapObjects, Paths, OraclePath, ReturnedOraclePath) :-
 	Paths = [CurPath | OtherPaths],
 	CurPath = path(_, [CurPos | RestOfPath]),
+	% Find the empty spaces around us (That aren't already in this path)
 	children(CurPos, Children, RestOfPath),
 	calc_children_costs(CurPath, Children, ChildrenCosts),
 	append(OtherPaths, ChildrenCosts, NewPaths),
+	% Find the oracles and stations around us that we don't already know about
 	FoundObjects = objects_list(Oracles, Chargers),
 	child_oracles(CurPos, NewOracles, Oracles),
+	% Set the Oracle path if we found an oracle and the path hasn't been set
+	% already
 	(NewOracles = [_|_], OraclePath = [] -> NewOraclePath = CurPath
 	; NewOraclePath = OraclePath),
 	child_chargers(CurPos, NewChargers, Chargers),
 	append(Oracles, NewOracles, FoundOracles),
 	append(Chargers, NewChargers, FoundChargers),
+	% Continue recursing
 	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths, NewOraclePath, ReturnedOraclePath).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Finds all the unqueried oracles around us that we don't already know about
+%% @param Pos p: The position to search around
+%% @returns NewOracles [map_object]: The list of oracles we found
+%% @param OldOracles [map_object]: The list of oracles we already know about
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 child_oracles(Pos, NewOracles, OldOracles) :-
 	findall(map_object(o(OID), NewPos), map_adjacent(Pos, NewPos, o(OID)), AllOracles),
+	% Filter out those that have been queried
 	filter_oracles(AllOracles, [], NonVisitedOracles),
+	% Filter out those that we already know about
 	do_filter_objects(NonVisitedOracles, OldOracles, NewOracles).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Finds all the unqueried chargers around us that we don't already know about
+%% @param Pos p: The position to search around
+%% @returns NewChargers [map_object]: The list of chargers we found
+%% @param OldChargers [map_object]: The list of chargers we already know about
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 child_chargers(Pos, NewChargers, OldChargers) :-
 	findall(map_object(c(CID), NewPos), map_adjacent(Pos, NewPos, c(CID)), AllChargers),
+	% Filter out those that we already know about
 	do_filter_objects(AllChargers, OldChargers, NewChargers).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Filters the objects out of Unfiltered that already exist in ExistingObjs
+%% @param Unfiltered []: The list of objects to filter
+%% @param ExistingObjs []: The list of objects to filter out of Unfiltered
+%% @returns Filtered []: The filtered list
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 do_filter_objects(Unfiltered, ExistingObjs, Filtered) :-
 	filter_objects(Unfiltered, ExistingObjs, [], Filtered).
 
@@ -129,10 +166,23 @@ solve_task_bf(Task,Current,RR,Cost,NewPos) :-
    append(OtherRPaths, ChildrenCosts, NewRPath),
    solve_task_bf(Task, NewRPath, RR, Cost, NewPos).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Finds all of the empty positions around Current that haven't already been
+%visited.
+%% @param Current p: The position to search around
+%% @returns Children [p]: The empty positions around Current
+%% @param RPath [p]: The already visited positions in this path
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 children(Current, Children, RPath) :-
    findall(NewPos, map_adjacent(Current, NewPos, empty), AllChildren),
    filter_children(AllChildren, RPath, Children).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Calculates the path to and the cost of a position around the current one
+%% @param Cur path: The path to the current position
+%% @param Children [p]: The positions surround the current one
+%% @returns ChildCosts [path]: The paths to the Children positions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 calc_children_costs(Cur, Children, ChildCosts) :-
    do_children_costs(Cur, Children, [], ChildCosts).
 
@@ -166,11 +216,13 @@ filter_loop([Child|Children], RPath, Filtered, Valids) :-
    ; filter_loop(Children, RPath, Filtered, Valids)
    ).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% A data structure containing the actor name and it's links
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 actor_data(actor_name, Links) :-
    actor(actor_name),
    is_list(Links).
 
-% find_identity(-A) <- find hidden identity by repeatedly calling agent_ask_oracle(oscar,o(1),link,L)
 find_identity(A):-
    findall(A, actor(A), ActorNames),
    create_actor_data(ActorNames, Actors),
@@ -192,6 +244,11 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
 	Filtered = [Actor|_].
 	%keep_filtering_actors(Filtered, Actor).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Finds all of the links for the given ActorNames and puts them into actor_data
+%% @param ActorNames [string]: The list of actor names
+%% @returns Actors [actor_data]: The list of actor data
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 create_actor_data(ActorNames, Actors) :-
    do_create_actor_data(ActorNames, [], Actors).
 
@@ -201,6 +258,12 @@ do_create_actor_data([CurActor|ActorNames], Processed, Actors) :-
    findall(L, wt_link(WT, L), Links),
    do_create_actor_data(ActorNames, [actor_data(CurActor, Links)|Processed], Actors).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Filters the list of actor_data to only those which have the given link
+%% @param Unfiltered [actor_data]: The list of actors to filter
+%% @param Link: The link which filtered actors must all have
+%% @returns Filtered: The filtered list of actors
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 filter_actors(Unfiltered, Link, Filtered) :-
    do_filter_actors(Unfiltered, Link, [], Filtered).
 
@@ -210,6 +273,11 @@ do_filter_actors([Actor|Unfiltered], Link, Filtering, Filtered) :-
    (memberchk(Link, Links) -> do_filter_actors(Unfiltered, Link, [Actor|Filtering], Filtered)
    ; do_filter_actors(Unfiltered, Link, Filtering, Filtered)).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Filters a list of oracles to only those which haven't already been visited
+%% @param Unfiltered [map_object]: The list of oracles to filter
+%% @param Filtered []:
+%% @returns Unqueried [map_object]: The list of unqueried oracles
 filter_oracles([], Unqueried, Unqueried).
 filter_oracles([Next | Unfiltered], Filtered, Unqueried) :-
 	Next = map_object(o(OID), Pos),

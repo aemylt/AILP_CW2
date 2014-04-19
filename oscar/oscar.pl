@@ -33,6 +33,10 @@ solve_task_top(go(Target),[[c(0,P), P]],R,Cost,NewPos) :-
     map_distance(P, Target, Dist),
     solve_task_astar(go(Target),[[Dist, c(0,P), P]],R,Cost,NewPos).
 
+solve_task_top(adjacent(Target),[[c(0,P), P]],R,Cost,NewPos) :-
+    map_distance(P, Target, Dist),
+    solve_task_astar(adjacent(Target),[[Dist, c(0,P), P]],R,Cost,NewPos).
+
 solve_task_top(Task,[[c(0,P), P]],R,Cost,NewPos) :-
     solve_task_bf(Task,[[c(0,P), P]],R,Cost,NewPos).
 
@@ -54,15 +58,16 @@ solve_task_astar(Task,Current,RPath,CostList,NewPos) :-
    Cur = [c(Depth, _) | _],
    CostList = [cost(Cost), depth(Depth)],
    achieved(Task,Cur,RPath,Cost,NewPos).
-solve_task_astar(go(Target),Current,RR,Cost,NewPos) :-
+solve_task_astar(Task,Current,RR,Cost,NewPos) :-
    Current = [CurList | OtherRPaths],
    CurList = [_ | Cur],
    Cur = [c(_,P)|RPath],
    children(P, Children, RPath),
+   (Task = go(P) -> Target = P; (Task = adjacent(P) -> Target = P ; true)),
    calc_children_costs_astar(Target, Cur, Children, ChildrenCosts),
    append(OtherRPaths, ChildrenCosts, NewRPath),
    sort(NewRPath, SortedRPath),
-   solve_task_astar(go(Target), SortedRPath, RR, Cost, NewPos).
+   solve_task_astar(Task, SortedRPath, RR, Cost, NewPos).
 
 % (Children, [c(C,P),P])
 calc_children_costs_astar(Target, Cur, Children, ChildCosts) :-
@@ -202,6 +207,11 @@ achieved(find(O),Current,RPath,Cost,NewPos) :-
 	( O=none    -> true
 	; otherwise -> RPath = [Last|_],map_adjacent(Last,_,O)
 	).
+achieved(adjacent(P),Current,RPath,Cost,NewPos) :-
+	Current = [c(Cost,NewPos)|RPath],
+	( P=none    -> true
+	; otherwise -> RPath = [Last|_],map_adjacent(Last,P,_)
+	).
 
 search(F,N,N,1):-
 	map_adjacent(F,N,empty).
@@ -248,7 +258,7 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects, RemainingOracles) :-
     agent_current_position(oscar, CurPos),
     do_get_closest_oracle(CurPos, RemainingOracles, ClosestOracle),
     ClosestOracle = map_object(Oracle, Pos),
-    solve_task_top(go(Pos),[[c(0,CurPos), CurPos]],R,Cost,_),
+    solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],R,Cost,_NewPos),
 	write(R).
 
 do_get_closest_oracle(CurPos, [Oracle|Oracles], Closest):-
@@ -352,4 +362,5 @@ callable(Task,solve_task(Task,Cost),[console(Task),shell(term(Cost))]):-
 	task(Task).
 
 task(go(_Pos)).
+task(adjacent(_Pos)).
 task(find(_O)).	% oracle o(N) or charging station c(N)

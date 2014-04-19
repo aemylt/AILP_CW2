@@ -8,10 +8,22 @@
 
 candidate_number(17655).
 
+map_object(c(_), p(_, _)).
+map_object(o(_), p(_, _)).
+
+% TODO: Check Path is a list
+object_path(map_object(_, _), _).
+
+% List of oracle positions and list of charger positions
+objects_list(_, _).
+
+% Depth and position list
+path(_, _).
+
 solve_task(Task,Cost):-
 	agent_current_position(oscar,P),
-   %solve_task_bt(Task,[c(0,P),P],0,R,Cost,_NewPos),!,	% prune choice point for efficiency
-   solve_task_top(Task,[[c(0,P), P]],R,Cost,_NewPos),
+  %solve_task_bt(Task,[c(0,P),P],0,R,Cost,_NewPos),!,	% prune choice point for efficiency
+  solve_task_top(Task,[[c(0,P), P]],R,Cost,_NewPos),
 	reverse(R,[_Init|Path]),
 	agent_do_moves(oscar,Path).
 
@@ -61,6 +73,45 @@ do_children_costs_astar(Target, Cur, [Child|Children], PastCosts, ChildCosts) :-
    map_distance(Child, Target, Dist),
    do_children_costs_astar(Target, Cur, Children, [[Dist, c(Depth, Child) | [Child|RPath]] | PastCosts], ChildCosts).
 
+do_find_stuff(FoundObjects, MapObjects, CurPos) :-
+	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])]).
+
+find_stuff(MapObjects, MapObjects, Paths) :-
+	Paths = [NextPath | _],
+	NextPath = path(Depth, _),
+	Depth >= 10,
+	!.
+find_stuff(FoundObjects, MapObjects, Paths) :-
+	Paths = [CurPath | OtherPaths],
+	CurPath = path(_, [CurPos | RestOfPath]),
+	children(CurPos, Children, RestOfPath),
+	calc_children_costs(CurPath, Children, ChildrenCosts),
+	append(OtherPaths, ChildrenCosts, NewPaths),
+	FoundObjects = objects_list(Oracles, Chargers),
+	child_oracles(CurPos, NewOracles, Oracles),
+	child_chargers(CurPos, NewChargers, Chargers),
+	append(Oracles, NewOracles, FoundOracles),
+	append(Chargers, NewChargers, FoundChargers),
+	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths).
+
+child_oracles(Pos, NewOracles, OldOracles) :-
+	findall(map_object(o(OID), NewPos), map_adjacent(Pos, NewPos, o(OID)), AllOracles),
+	do_filter_objects(AllOracles, OldOracles, NewOracles).
+
+child_chargers(Pos, NewChargers, OldChargers) :-
+	findall(map_object(c(CID), NewPos), map_adjacent(Pos, NewPos, c(CID)), AllChargers),
+	do_filter_objects(AllChargers, OldChargers, NewChargers).
+
+do_filter_objects(Unfiltered, ExistingObjs, Filtered) :-
+	filter_objects(Unfiltered, ExistingObjs, [], Filtered).
+
+filter_objects([], _, Filtered, Filtered).
+filter_objects([Next | OtherObjs], ExistingObjs, Filtered, Valids) :-
+	( memberchk(Next, ExistingObjs) ->
+		filter_objects(OtherObjs, ExistingObjs, Filtered, Valids)
+	;  filter_objects(OtherObjs, ExistingObjs, [Next | Filtered], Valids)
+	).
+
 solve_task_bf(Task,Current,RPath,CostList,NewPos) :-
    % Because this is bf the first item in RPath will always be the shortest
    Current = [Cur | _],
@@ -79,15 +130,14 @@ children(Current, Children, RPath) :-
    findall(NewPos, map_adjacent(Current, NewPos, empty), AllChildren),
    filter_children(AllChildren, RPath, Children).
 
-% (Children, [c(C,P),P])
 calc_children_costs(Cur, Children, ChildCosts) :-
    do_children_costs(Cur, Children, [], ChildCosts).
 
 do_children_costs(_, [], ChildCosts, ChildCosts).
-do_children_costs(Cur, [Child|Children], PastCosts, ChildCosts) :-
-   Cur = [c(OldDepth, _)|RPath],
+do_children_costs(CurPath, [Child|Children], PastCosts, ChildCosts) :-
+   CurPath = path(OldDepth, Path),
    Depth is OldDepth+1,
-   do_children_costs(Cur, Children, [[c(Depth, Child) | [Child|RPath]] | PastCosts], ChildCosts).
+   do_children_costs(CurPath, Children, [path(Depth, [Child | Path]) | PastCosts], ChildCosts).
 
 achieved(go(Exit),Current,RPath,Cost,NewPos) :-
 	Current = [c(Cost,NewPos)|RPath],
@@ -120,16 +170,17 @@ actor_data(actor_name, Links) :-
 
 % find_identity(-A) <- find hidden identity by repeatedly calling agent_ask_oracle(oscar,o(1),link,L)
 find_identity(A):-
-   agent_current_position(oscar,P),
    findall(A, actor(A), ActorNames),
    create_actor_data(ActorNames, Actors),
-   keep_filtering_actors(Actors, Actor),
+   keep_filtering_actors(Actors, Actor, objects_list([],[])),
    Actor = actor_data(A, _),
    !.
 
-keep_filtering_actors([Actor], Actor).
-keep_filtering_actors(Unfiltered, Actor) :-
-   solve_task(find(o(I)), _),
+keep_filtering_actors([Actor], Actor, _).
+keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
+	agent_current_position(oscar, CurPos),
+	do_find_stuff(FoundObjects, NewFoundObjects, CurPos),
+	% TODO: Find nearest unqueried oracle and go to it
    agent_ask_oracle(oscar, o(I), link, Link),
    filter_actors(Unfiltered, Link, Filtered),
    keep_filtering_actors(Filtered, Actor).
@@ -151,6 +202,14 @@ do_filter_actors([Actor|Unfiltered], Link, Filtering, Filtered) :-
    Actor = actor_data(_,Links),
    (memberchk(Link, Links) -> do_filter_actors(Unfiltered, Link, [Actor|Filtering], Filtered)
    ; do_filter_actors(Unfiltered, Link, Filtering, Filtered)).
+
+filter_oracles([], Unqueried, Unqueried).
+filter_oracles([Next | Unfiltered], Filtered, Unqueried) :-
+	Next = map_object(o(OID), Pos),
+	(agent_check_oracle(oscar, OID) -> filter_oracles(Unfiltered, Filtered, Unqueried)
+	; filter_oracles(Unfiltered, [map_object(o(OID), Pos) | Filtered], Unqueried)
+	).
+
 
 %%% command shell %%%
 

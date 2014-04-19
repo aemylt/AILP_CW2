@@ -226,23 +226,43 @@ actor_data(actor_name, Links) :-
 find_identity(A):-
    findall(A, actor(A), ActorNames),
    create_actor_data(ActorNames, Actors),
-   keep_filtering_actors(Actors, Actor, objects_list([],[])),
+   keep_filtering_actors(Actors, Actor, objects_list([],[]), []),
    Actor = actor_data(A, _),
    !.
 
-keep_filtering_actors([Actor], Actor, _).
-keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
+keep_filtering_actors([Actor], Actor, _, _).
+keep_filtering_actors(Unfiltered, Actor, FoundObjects, []) :-
     agent_current_position(oscar, CurPos),
 	do_find_stuff(FoundObjects, Objects, CurPos, ClosestOracle),
 	ClosestOracle = path(_, PathFromOracle),
 	reverse(PathFromOracle, [_ | PathToOracle]),
 	agent_do_moves(oscar, PathToOracle),
-	Objects = objects_list([map_object(Oracle, _)|_], _),
+	Objects = objects_list([map_object(Oracle, _)|RemainingOracles], _),
 	% TODO: Find nearest unqueried oracle and go to it
 	agent_ask_oracle(oscar, Oracle, link, Link),
 	filter_actors(Unfiltered, Link, Filtered),
-	Filtered = [Actor|_].
-	%keep_filtering_actors(Filtered, Actor).
+	Filtered = [Actor|_],
+	keep_filtering_actors(Filtered, Actor, FoundObjects, RemainingOracles).
+
+keep_filtering_actors(Unfiltered, Actor, FoundObjects, RemainingOracles) :-
+    agent_current_position(oscar, CurPos),
+    do_get_closest_oracle(CurPos, RemainingOracles, ClosestOracle),
+    ClosestOracle = map_object(Oracle, Pos),
+    solve_task_top(go(Pos),[[c(0,CurPos), CurPos]],R,Cost,_),
+	write(R).
+
+do_get_closest_oracle(CurPos, [Oracle|Oracles], Closest):-
+    Oracle = map_object(_, Pos),
+    map_distance(CurPos, Pos, D),
+    get_closest_oracle(CurPos, Oracles, Oracle, Closest, D).
+
+get_closest_oracle(_, [], Closest, Closest, _).
+get_closest_oracle(CurPos, [Oracle|Oracles], OldOracle, Closest, OldDistance):-
+    Oracle = map_object(_, Pos),
+    map_distance(CurPos, Pos, D),
+    (D =< OldDistance -> NewDistance = D, NewOracle = Oracle
+    ; NewDistance = OldDistance, NewOracle = OldOracle),
+    get_closest_oracle(CurPos, Oracles, NewOracle, Closest, NewDistance).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Finds all of the links for the given ActorNames and puts them into actor_data

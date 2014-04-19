@@ -85,14 +85,14 @@ do_children_costs_astar(Target, Cur, [Child|Children], PastCosts, ChildCosts) :-
 %% @returns OraclePath [p]: The path to the nearest oracle
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 do_find_stuff(FoundObjects, MapObjects, CurPos, OraclePath) :-
-	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], [], OraclePath).
+	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], OraclePath).
 
-find_stuff(MapObjects, MapObjects, Paths, OraclePath, OraclePath) :-
+find_stuff(MapObjects, MapObjects, Paths, _) :-
 	Paths = [NextPath | _],
 	NextPath = path(Depth, _),
 	Depth >= 10, % Limits the search depth to 10
 	!.
-find_stuff(FoundObjects, MapObjects, Paths, OraclePath, ReturnedOraclePath) :-
+find_stuff(FoundObjects, MapObjects, Paths, OraclePath) :-
 	Paths = [CurPath | OtherPaths],
 	CurPath = path(_, [CurPos | RestOfPath]),
 	% Find the empty spaces around us (That aren't already in this path)
@@ -104,13 +104,13 @@ find_stuff(FoundObjects, MapObjects, Paths, OraclePath, ReturnedOraclePath) :-
 	child_oracles(CurPos, NewOracles, Oracles),
 	% Set the Oracle path if we found an oracle and the path hasn't been set
 	% already
-	(NewOracles = [_|_], OraclePath = [] -> NewOraclePath = CurPath
-	; NewOraclePath = OraclePath),
+	(NewOracles = [_|_], var(OraclePath) -> OraclePath = CurPath
+	; true),
 	child_chargers(CurPos, NewChargers, Chargers),
 	append(Oracles, NewOracles, FoundOracles),
 	append(Chargers, NewChargers, FoundChargers),
 	% Continue recursing
-	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths, NewOraclePath, ReturnedOraclePath).
+	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths, OraclePath).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Finds all the unqueried oracles around us that we don't already know about

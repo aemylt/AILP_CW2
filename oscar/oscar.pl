@@ -63,7 +63,7 @@ solve_task_astar(Task,Current,RR,Cost,NewPos) :-
    CurList = [_ | Cur],
    Cur = [c(_,P)|RPath],
    children(P, Children, RPath),
-   (Task = go(P) -> Target = P; (Task = adjacent(P) -> Target = P ; true)),
+   (Task = go(Pos) -> Target = Pos; Task = adjacent(Pos) -> Target = Pos),
    calc_children_costs_astar(Target, Cur, Children, ChildrenCosts),
    append(OtherRPaths, ChildrenCosts, NewRPath),
    sort(NewRPath, SortedRPath),
@@ -251,15 +251,18 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects, []) :-
 	% TODO: Find nearest unqueried oracle and go to it
 	agent_ask_oracle(oscar, Oracle, link, Link),
 	filter_actors(Unfiltered, Link, Filtered),
-	Filtered = [Actor|_],
 	keep_filtering_actors(Filtered, Actor, FoundObjects, RemainingOracles).
 
 keep_filtering_actors(Unfiltered, Actor, FoundObjects, RemainingOracles) :-
     agent_current_position(oscar, CurPos),
     do_get_closest_oracle(CurPos, RemainingOracles, ClosestOracle),
     ClosestOracle = map_object(Oracle, Pos),
-    solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],R,Cost,_NewPos),
-	write(R).
+    solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromOracle,Cost,_NewPos),
+	reverse(PathFromOracle, [_ | PathToOracle]),
+	agent_do_moves(oscar, PathToOracle),
+	agent_ask_oracle(oscar, Oracle, link, Link),
+	filter_actors(Unfiltered, Link, Filtered),
+	Filtered = [Actor|_].
 
 do_get_closest_oracle(CurPos, [Oracle|Oracles], Closest):-
     Oracle = map_object(_, Pos),

@@ -73,15 +73,15 @@ do_children_costs_astar(Target, Cur, [Child|Children], PastCosts, ChildCosts) :-
    map_distance(Child, Target, Dist),
    do_children_costs_astar(Target, Cur, Children, [[Dist, c(Depth, Child) | [Child|RPath]] | PastCosts], ChildCosts).
 
-do_find_stuff(FoundObjects, MapObjects, CurPos) :-
-	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])]).
+do_find_stuff(FoundObjects, MapObjects, CurPos, OraclePath) :-
+	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], [], OraclePath).
 
-find_stuff(MapObjects, MapObjects, Paths) :-
+find_stuff(MapObjects, MapObjects, Paths, OraclePath, OraclePath) :-
 	Paths = [NextPath | _],
 	NextPath = path(Depth, _),
 	Depth >= 10,
 	!.
-find_stuff(FoundObjects, MapObjects, Paths) :-
+find_stuff(FoundObjects, MapObjects, Paths, OraclePath, ReturnedOraclePath) :-
 	Paths = [CurPath | OtherPaths],
 	CurPath = path(_, [CurPos | RestOfPath]),
 	children(CurPos, Children, RestOfPath),
@@ -89,14 +89,17 @@ find_stuff(FoundObjects, MapObjects, Paths) :-
 	append(OtherPaths, ChildrenCosts, NewPaths),
 	FoundObjects = objects_list(Oracles, Chargers),
 	child_oracles(CurPos, NewOracles, Oracles),
+	(NewOracles = [_|_], OraclePath = [] -> NewOraclePath = CurPath
+	; NewOraclePath = OraclePath),
 	child_chargers(CurPos, NewChargers, Chargers),
 	append(Oracles, NewOracles, FoundOracles),
 	append(Chargers, NewChargers, FoundChargers),
-	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths).
+	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths, NewOraclePath, ReturnedOraclePath).
 
 child_oracles(Pos, NewOracles, OldOracles) :-
 	findall(map_object(o(OID), NewPos), map_adjacent(Pos, NewPos, o(OID)), AllOracles),
-	do_filter_objects(AllOracles, OldOracles, NewOracles).
+	filter_oracles(AllOracles, [], NonVisitedOracles),
+	do_filter_objects(NonVisitedOracles, OldOracles, NewOracles).
 
 child_chargers(Pos, NewChargers, OldChargers) :-
 	findall(map_object(c(CID), NewPos), map_adjacent(Pos, NewPos, c(CID)), AllChargers),
@@ -150,7 +153,6 @@ achieved(find(O),Current,RPath,Cost,NewPos) :-
 	; otherwise -> RPath = [Last|_],map_adjacent(Last,_,O)
 	).
 
-
 search(F,N,N,1):-
 	map_adjacent(F,N,empty).
 
@@ -178,12 +180,17 @@ find_identity(A):-
 
 keep_filtering_actors([Actor], Actor, _).
 keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
-	agent_current_position(oscar, CurPos),
-	do_find_stuff(FoundObjects, NewFoundObjects, CurPos),
+    agent_current_position(oscar, CurPos),
+	do_find_stuff(FoundObjects, Objects, CurPos, ClosestOracle),
+	ClosestOracle = path(_, PathFromOracle),
+	reverse(PathFromOracle, [_ | PathToOracle]),
+	agent_do_moves(oscar, PathToOracle),
+	Objects = objects_list([map_object(Oracle, _)|_], _),
 	% TODO: Find nearest unqueried oracle and go to it
-   agent_ask_oracle(oscar, o(I), link, Link),
-   filter_actors(Unfiltered, Link, Filtered),
-   keep_filtering_actors(Filtered, Actor).
+	agent_ask_oracle(oscar, Oracle, link, Link),
+	filter_actors(Unfiltered, Link, Filtered),
+	Filtered = [Actor|_].
+	%keep_filtering_actors(Filtered, Actor).
 
 create_actor_data(ActorNames, Actors) :-
    do_create_actor_data(ActorNames, [], Actors).
@@ -209,7 +216,6 @@ filter_oracles([Next | Unfiltered], Filtered, Unqueried) :-
 	(agent_check_oracle(oscar, OID) -> filter_oracles(Unfiltered, Filtered, Unqueried)
 	; filter_oracles(Unfiltered, [map_object(o(OID), Pos) | Filtered], Unqueried)
 	).
-
 
 %%% command shell %%%
 

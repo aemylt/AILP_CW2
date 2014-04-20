@@ -291,14 +291,14 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects, SearchedFrom) :-
 	NewSearchedFrom = [CurPos | SearchedFrom],
 	ClosestOracle = path(_, PathFromOracle),
 	reverse(PathFromOracle, [_ | PathToOracle]),
-	Objects = objects_list(NewOracles, NewChargers)
+	Objects = objects_list(NewOracles, NewChargers),
 	move_and_charge(CurPos, PathToOracle, NewChargers, false),
 	% We don't care if this fails. do_find_stuff probably couldn't find an
 	% oracle so gave us an empty space to go to instead
 	(NewOracles = [map_object(Oracle, _)|RemainingOracles] ->
 		agent_ask_oracle(oscar, Oracle, link, Link),
 		filter_actors(Unfiltered, Link, Filtered)
-	; Filtered = Unfiltered, RemainingOracles = []
+	; Filtered = Unfiltered
 	),
 	keep_filtering_actors(Filtered, Actor, objects_list(RemainingOracles, NewChargers), NewSearchedFrom),
 	!.
@@ -321,6 +321,7 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects, SearchedFrom) :-
 move_and_charge(_, [], _, _).
 move_and_charge(Pos, [NextPos|Path], Chargers, Charged) :-
     agent_current_energy(oscar, Energy),
+    Energy > 0,
     (Charged -> NewCharged = Charged
     ; recharge_and_return(Chargers, Energy, Pos, NewCharged)),
     agent_do_move(oscar, NextPos),
@@ -339,7 +340,8 @@ recharge_and_return([Charger|Chargers], Energy, CurPos, Charged) :-
 	(Dist =< 3 -> reverse(PathFromStation, [_ | PathToStation]),
 		agent_do_moves(oscar, PathToStation),
 		agent_topup_energy(oscar, ChargerObj),
-		agent_do_moves(oscar, PathFromStation),
+		PathFromStation = [_ | PathBackAgain],
+		agent_do_moves(oscar, PathBackAgain),
 		Charged = true
 	; recharge_and_return(Chargers, Energy, CurPos, Charged)).
 

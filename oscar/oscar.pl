@@ -317,9 +317,9 @@ do_filter_actors([Actor|Unfiltered], Link, Filtering, Filtered) :-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 filter_oracles([], Unqueried, Unqueried).
 filter_oracles([Next | Unfiltered], Filtered, Unqueried) :-
-	Next = map_object(o(OID), Pos),
-	(agent_check_oracle(oscar, OID) -> filter_oracles(Unfiltered, Filtered, Unqueried)
-	; filter_oracles(Unfiltered, [map_object(o(OID), Pos) | Filtered], Unqueried)
+	Next = map_object(Oracle, Pos),
+	(agent_check_oracle(oscar, Oracle) -> filter_oracles(Unfiltered, Filtered, Unqueried)
+	; filter_oracles(Unfiltered, [map_object(Oracle, Pos) | Filtered], Unqueried)
 	).
 
 %%% command shell %%%

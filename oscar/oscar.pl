@@ -236,24 +236,25 @@ actor_data(actor_name, Links) :-
 find_identity(A):-
    findall(A, actor(A), ActorNames),
    create_actor_data(ActorNames, Actors),
-   keep_filtering_actors(Actors, Actor, objects_list([],[]), []),
+   keep_filtering_actors(Actors, Actor, objects_list([],[])),
    Actor = actor_data(A, _),
    !.
 
 keep_filtering_actors([Actor], Actor, _, _).
-keep_filtering_actors(Unfiltered, Actor, FoundObjects, []) :-
+keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
+	FoundObjects = objects_list([], Chargers),
     agent_current_position(oscar, CurPos),
 	do_find_stuff(FoundObjects, Objects, CurPos, ClosestOracle),
 	ClosestOracle = path(_, PathFromOracle),
 	reverse(PathFromOracle, [_ | PathToOracle]),
 	agent_do_moves(oscar, PathToOracle),
 	Objects = objects_list([map_object(Oracle, _)|RemainingOracles], _),
-	% TODO: Find nearest unqueried oracle and go to it
 	agent_ask_oracle(oscar, Oracle, link, Link),
 	filter_actors(Unfiltered, Link, Filtered),
-	keep_filtering_actors(Filtered, Actor, FoundObjects, RemainingOracles).
+	keep_filtering_actors(Filtered, Actor, objects_list(RemainingOracles, Chargers)),
+	!.
 
-keep_filtering_actors(Unfiltered, Actor, FoundObjects, RemainingOracles) :-
+keep_filtering_actors(Unfiltered, Actor, objects_list(RemainingOracles, Chargers)) :-
     agent_current_position(oscar, CurPos),
     do_get_closest_oracle(CurPos, RemainingOracles, ClosestOracle),
     ClosestOracle = map_object(Oracle, Pos),
@@ -262,7 +263,9 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects, RemainingOracles) :-
 	agent_do_moves(oscar, PathToOracle),
 	agent_ask_oracle(oscar, Oracle, link, Link),
 	filter_actors(Unfiltered, Link, Filtered),
-	Filtered = [Actor|_].
+	select(ClosestOracle, RemainingOracles, OraclesLeft),
+	keep_filtering_actors(Filtered, Actor, objects_list(OraclesLeft, Chargers)),
+	!.
 
 do_get_closest_oracle(CurPos, [Oracle|Oracles], Closest):-
     Oracle = map_object(_, Pos),
@@ -311,6 +314,7 @@ do_filter_actors([Actor|Unfiltered], Link, Filtering, Filtered) :-
 %% @param Unfiltered [map_object]: The list of oracles to filter
 %% @param Filtered []:
 %% @returns Unqueried [map_object]: The list of unqueried oracles
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 filter_oracles([], Unqueried, Unqueried).
 filter_oracles([Next | Unfiltered], Filtered, Unqueried) :-
 	Next = map_object(o(OID), Pos),

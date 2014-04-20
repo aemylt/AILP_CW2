@@ -282,7 +282,7 @@ find_identity(A):-
    Actor = actor_data(A, _),
    !.
 
-keep_filtering_actors([Actor], Actor, _, _, _).
+keep_filtering_actors([Actor], Actor, _, _).
 keep_filtering_actors(Unfiltered, Actor, FoundObjects, SearchedFrom) :-
 	FoundObjects = objects_list([], Chargers),
 	recharge_if_needed(FoundObjects, _),

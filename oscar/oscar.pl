@@ -90,7 +90,9 @@ do_children_costs_astar(Target, Cur, [Child|Children], PastCosts, ChildCosts) :-
 %% @returns OraclePath [p]: The path to the nearest oracle
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 do_find_stuff(FoundObjects, MapObjects, CurPos, OraclePath) :-
-	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], OraclePath).
+	do_command([oscar, console, 'Searching...']),
+	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], OraclePath),
+	do_command([oscar, console, 'Done searching']).
 
 find_stuff(MapObjects, MapObjects, Paths, _) :-
 	Paths = [NextPath | _],
@@ -243,6 +245,7 @@ find_identity(A):-
 keep_filtering_actors([Actor], Actor, _, _).
 keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
 	FoundObjects = objects_list([], Chargers),
+	recharge_if_needed(FoundObjects, _),
     agent_current_position(oscar, CurPos),
 	do_find_stuff(FoundObjects, Objects, CurPos, ClosestOracle),
 	ClosestOracle = path(_, PathFromOracle),
@@ -254,7 +257,9 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
 	keep_filtering_actors(Filtered, Actor, objects_list(RemainingOracles, Chargers)),
 	!.
 
-keep_filtering_actors(Unfiltered, Actor, objects_list(RemainingOracles, Chargers)) :-
+keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
+	FoundObjects = objects_list(RemainingOracles, Chargers),
+	recharge_if_needed(FoundObjects, _),
     agent_current_position(oscar, CurPos),
     do_get_closest_oracle(CurPos, RemainingOracles, ClosestOracle),
     ClosestOracle = map_object(Oracle, Pos),
@@ -266,6 +271,29 @@ keep_filtering_actors(Unfiltered, Actor, objects_list(RemainingOracles, Chargers
 	select(ClosestOracle, RemainingOracles, OraclesLeft),
 	keep_filtering_actors(Filtered, Actor, objects_list(OraclesLeft, Chargers)),
 	!.
+
+recharge_if_needed(FoundObjects, NewFoundObjects) :-
+	FoundObjects = objects_list(_, Chargers),
+	agent_current_energy(oscar, Energy),
+	agent_current_position(oscar, CurPos),
+	(recharge_if_possible(Chargers, Energy, CurPos) -> NewFoundObjects = FoundObjects
+	; % Last ditch attempt to find a charger near enough
+		do_find_stuff(FoundObjects, NewFoundObjects, CurPos, _),
+		NewFoundObjects = objects_list(_, MoreChargers),
+		recharge_if_possible(MoreChargers, Energy, CurPos)
+	).
+
+% No base case rule because if no chargers are left then we can't recharge
+recharge_if_possible([], Energy, _) :-
+	Energy >= 10.
+recharge_if_possible([Charger | Chargers], Energy, CurPos) :-
+	Charger = map_object(ChargerObj, Pos),
+	solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,cost(Cost),_NewPos),
+	(Cost =< Energy -> reverse(PathFromStation, [_ | PathToStation]),
+		agent_do_moves(oscar, PathToStation),
+		agent_topup_energy(oscar, ChargerObj)
+	; recharge_if_possible(Chargers, Energy, CurPos)
+	).
 
 do_get_closest_oracle(CurPos, [Oracle|Oracles], Closest):-
     Oracle = map_object(_, Pos),

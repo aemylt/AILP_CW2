@@ -291,14 +291,14 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects, SearchedFrom) :-
 	NewSearchedFrom = [CurPos | SearchedFrom],
 	ClosestOracle = path(_, PathFromOracle),
 	reverse(PathFromOracle, [_ | PathToOracle]),
-	Objects = objects_list([map_object(Oracle, _)|RemainingOracles], NewChargers),
+	Objects = objects_list(NewOracles, NewChargers)
 	move_and_charge(CurPos, PathToOracle, NewChargers, false),
 	% We don't care if this fails. do_find_stuff probably couldn't find an
 	% oracle so gave us an empty space to go to instead
-	(Objects = objects_list([map_object(Oracle, _)|RemainingOracles], _) ->
+	(NewOracles = [map_object(Oracle, _)|RemainingOracles] ->
 		agent_ask_oracle(oscar, Oracle, link, Link),
 		filter_actors(Unfiltered, Link, Filtered)
-	; Filtered = Unfiltered
+	; Filtered = Unfiltered, RemainingOracles = []
 	),
 	keep_filtering_actors(Filtered, Actor, objects_list(RemainingOracles, NewChargers), NewSearchedFrom),
 	!.

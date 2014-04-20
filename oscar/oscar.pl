@@ -337,10 +337,8 @@ recharge_and_return([Charger|Chargers], Energy, CurPos, Charged) :-
     solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,Cost,_NewPos),
     Cost = [cost(Dist), _],
 	(Dist =< 3 -> reverse(PathFromStation, [_ | PathToStation]),
-	    do_command([oscar, console, 'Im going on an adventure!']),
 		agent_do_moves(oscar, PathToStation),
 		agent_topup_energy(oscar, ChargerObj),
-	    do_command([oscar, console, 'Im coming home!']),
 		agent_do_moves(oscar, PathFromStation),
 		Charged = true
 	; recharge_and_return(Chargers, Energy, CurPos, Charged)).

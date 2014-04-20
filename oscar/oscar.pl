@@ -93,24 +93,23 @@ do_children_costs_astar(Target, Cur, [Child|Children], PastCosts, ChildCosts) :-
 %% @param CurPos p: Current agent position
 %% @returns OraclePath [p]: The path to the nearest oracle
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-do_find_stuff(FoundObjects, MapObjects, CurPos, OraclePath) :-
+do_find_stuff(FoundObjects, MapObjects, CurPos, OraclePath, SearchedFrom) :-
 	do_command([oscar, console, 'Searching...']),
 	empty_assoc(SearchedList),
-	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], OraclePath, SearchedList),
+	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], OraclePath, SearchedList, SearchedFrom),
 	do_command([oscar, console, 'Done searching']),
 	!.
 
-find_stuff(MapObjects, MapObjects, Paths, OraclePath, _) :-
+find_stuff(MapObjects, MapObjects, Paths, OraclePath, _, SearchedFrom) :-
 	Paths = [NextPath | _],
 	NextPath = path(Depth, _),
-	Depth >= 10, % Limits the search depth to 10
-	% TODO: For now the search is thick and it just picks the first space on the
-	% edge of the search space
-	(var(OraclePath) -> OraclePath = NextPath
+	Depth >= 20, % Limits the search depth to 20
+	(var(OraclePath) -> do_find_good_outer_path(Paths, 20, SearchedFrom, GoodPath),
+		OraclePath = GoodPath
 	; true
 	),
 	!.
-find_stuff(FoundObjects, MapObjects, Paths, OraclePath, SearchedList) :-
+find_stuff(FoundObjects, MapObjects, Paths, OraclePath, SearchedList, SearchedFrom) :-
 	Paths = [CurPath | OtherPaths],
 	CurPath = path(_, [CurPos | RestOfPath]),
 	% Find the empty spaces around us (That aren't already in this path)
@@ -123,18 +122,41 @@ find_stuff(FoundObjects, MapObjects, Paths, OraclePath, SearchedList) :-
 	child_oracles(CurPos, NewOracles, Oracles),
 	% Set the Oracle path if we found an oracle and the path hasn't been set
 	% already
-	(NewOracles = [_|_], var(OraclePath) -> OraclePath = CurPath
+	((NewOracles = [_|_], var(OraclePath)) -> OraclePath = CurPath
 	; true),
 	child_chargers(CurPos, NewChargers, Chargers),
 	append(Oracles, NewOracles, FoundOracles),
 	append(Chargers, NewChargers, FoundChargers),
 	% Continue recursing
-	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths, OraclePath, NewSearchedList).
+	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths, OraclePath, NewSearchedList, SearchedFrom).
 
 populate_searched_list(NewAssoc, [], NewAssoc).
 populate_searched_list(Assoc, [Child | Children], ReturnAssoc) :-
 	put_assoc(Child, Assoc, 1, NewAssoc),
 	populate_searched_list(NewAssoc, Children, ReturnAssoc).
+
+do_find_good_outer_path(Paths, DepthLim, SearchedFrom, GoodPath) :-
+	DepthGuess is DepthLim / 2,
+	(find_good_outer_path(Paths, DepthGuess, SearchedFrom, ReturnedPath) ->
+		GoodPath = ReturnedPath
+		% Not a great path but we can't find anything better
+		% TODO: Maybe pick a random long path instead
+	; Paths = [GoodPath | _ ]
+	).
+
+find_good_outer_path([Path | Paths], Radius, SearchedFrom, PathToReturn) :-
+	(path_is_good(Path, SearchedFrom, Radius) -> PathToReturn = Path
+	; find_good_outer_path(Paths, Radius, SearchedFrom, PathToReturn)
+	).
+
+path_is_good(_, [], _).
+path_is_good(Path, [NextPos | SearchedFrom], Radius) :-
+	Path = path(_, [EndPos | _]),
+	EndPos = p(MaybeX, MaybeY),
+	NextPos = p(FromX, FromY),
+	(MaybeX < FromX - Radius ; MaybeX > FromX + Radius),
+	(MaybeY < FromY - Radius ; MaybeY > FromY + Radius),
+	path_is_good(Path, SearchedFrom, Radius).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Finds all the unqueried oracles around us that we don't already know about
@@ -256,16 +278,17 @@ actor_data(actor_name, Links) :-
 find_identity(A):-
    findall(A, actor(A), ActorNames),
    create_actor_data(ActorNames, Actors),
-   keep_filtering_actors(Actors, Actor, objects_list([],[])),
+   keep_filtering_actors(Actors, Actor, objects_list([],[]), []),
    Actor = actor_data(A, _),
    !.
 
-keep_filtering_actors([Actor], Actor, _, _).
-keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
+keep_filtering_actors([Actor], Actor, _, _, _).
+keep_filtering_actors(Unfiltered, Actor, FoundObjects, SearchedFrom) :-
 	FoundObjects = objects_list([], Chargers),
 	recharge_if_needed(FoundObjects, _),
     agent_current_position(oscar, CurPos),
-	do_find_stuff(FoundObjects, Objects, CurPos, ClosestOracle),
+	do_find_stuff(FoundObjects, Objects, CurPos, ClosestOracle, SearchedFrom),
+	NewSearchedFrom = [CurPos | SearchedFrom],
 	ClosestOracle = path(_, PathFromOracle),
 	reverse(PathFromOracle, [_ | PathToOracle]),
 	agent_do_moves(oscar, PathToOracle),
@@ -276,10 +299,10 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
 		filter_actors(Unfiltered, Link, Filtered)
 	; Filtered = Unfiltered
 	),
-	keep_filtering_actors(Filtered, Actor, objects_list(RemainingOracles, Chargers)),
+	keep_filtering_actors(Filtered, Actor, objects_list(RemainingOracles, Chargers), NewSearchedFrom),
 	!.
 
-keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
+keep_filtering_actors(Unfiltered, Actor, FoundObjects, SearchedFrom) :-
 	FoundObjects = objects_list(RemainingOracles, Chargers),
 	recharge_if_needed(FoundObjects, _),
     agent_current_position(oscar, CurPos),
@@ -291,23 +314,24 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
 	agent_ask_oracle(oscar, Oracle, link, Link),
 	filter_actors(Unfiltered, Link, Filtered),
 	select(ClosestOracle, RemainingOracles, OraclesLeft),
-	keep_filtering_actors(Filtered, Actor, objects_list(OraclesLeft, Chargers)),
+	keep_filtering_actors(Filtered, Actor, objects_list(OraclesLeft, Chargers), SearchedFrom),
 	!.
 
+% TODO: Add to SearchedFrom
 recharge_if_needed(FoundObjects, NewFoundObjects) :-
 	FoundObjects = objects_list(_, Chargers),
 	agent_current_energy(oscar, Energy),
 	agent_current_position(oscar, CurPos),
 	(recharge_if_possible(Chargers, Energy, CurPos) -> NewFoundObjects = FoundObjects
 	; % Last ditch attempt to find a charger near enough
-		do_find_stuff(FoundObjects, NewFoundObjects, CurPos, _),
+		do_find_stuff(FoundObjects, NewFoundObjects, CurPos, _, []),
 		NewFoundObjects = objects_list(_, MoreChargers),
 		recharge_if_possible(MoreChargers, Energy, CurPos)
 	),
 	!.
 
 recharge_if_possible([], Energy, _) :-
-	Energy >= 20.
+	Energy >= 30.
 recharge_if_possible([Charger | Chargers], Energy, CurPos) :-
 	Charger = map_object(ChargerObj, Pos),
 	solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,Cost,_NewPos),

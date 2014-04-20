@@ -319,6 +319,7 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects, SearchedFrom) :-
 
 % TODO: Add to SearchedFrom
 recharge_if_needed(FoundObjects, NewFoundObjects) :-
+	!,
 	FoundObjects = objects_list(_, Chargers),
 	agent_current_energy(oscar, Energy),
 	agent_current_position(oscar, CurPos),

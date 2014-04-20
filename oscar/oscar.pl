@@ -249,21 +249,21 @@ find_identity(A):-
 
 keep_filtering_actors([Actor], Actor, _, _).
 keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
-	FoundObjects = objects_list([], Chargers),
+	FoundObjects = objects_list([], _),
 	recharge_if_needed(FoundObjects, _),
     agent_current_position(oscar, CurPos),
 	do_find_stuff(FoundObjects, Objects, CurPos, ClosestOracle),
 	ClosestOracle = path(_, PathFromOracle),
 	reverse(PathFromOracle, [_ | PathToOracle]),
-	agent_do_moves(oscar, PathToOracle),
-	Objects = objects_list([map_object(Oracle, _)|RemainingOracles], _),
+	Objects = objects_list([map_object(Oracle, _)|RemainingOracles], NewChargers),
+	move_and_charge(CurPos, PathToOracle, NewChargers, false),
 	% We don't care if this fails. do_find_stuff probably couldn't find an
 	% oracle so gave us an empty space to go to instead
 	(agent_ask_oracle(oscar, Oracle, link, Link) ->
 		filter_actors(Unfiltered, Link, Filtered)
 	; Filtered = Unfiltered
 	),
-	keep_filtering_actors(Filtered, Actor, objects_list(RemainingOracles, Chargers)),
+	keep_filtering_actors(Filtered, Actor, objects_list(RemainingOracles, NewChargers)),
 	!.
 
 keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
@@ -274,12 +274,39 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
     ClosestOracle = map_object(Oracle, Pos),
     solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromOracle,Cost,_NewPos),
 	reverse(PathFromOracle, [_ | PathToOracle]),
-	agent_do_moves(oscar, PathToOracle),
+	move_and_charge(CurPos, PathToOracle, Chargers, false),
 	agent_ask_oracle(oscar, Oracle, link, Link),
 	filter_actors(Unfiltered, Link, Filtered),
 	select(ClosestOracle, RemainingOracles, OraclesLeft),
 	keep_filtering_actors(Filtered, Actor, objects_list(OraclesLeft, Chargers)),
 	!.
+
+move_and_charge(_, [], _, _).
+move_and_charge(Pos, [NextPos|Path], Chargers, Charged) :-
+    agent_current_energy(oscar, Energy),
+    (Charged -> NewCharged = Charged
+    ; recharge_and_return(Chargers, Energy, Pos, NewCharged)),
+    agent_do_move(oscar, NextPos),
+    move_and_charge(NextPos, Path, Chargers, NewCharged).
+
+recharge_and_return(_, Energy, _, false) :-
+    Energy >= 70.
+recharge_and_return([], _, _, false).
+recharge_and_return(_, _, CurPos, true) :-
+    map_adjacent(CurPos, _, c(CID)),
+    agent_topup_energy(oscar, c(CID)).
+recharge_and_return([Charger|Chargers], Energy, CurPos, Charged) :-
+    Charger = map_object(ChargerObj, Pos),
+    solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,Cost,_NewPos),
+    Cost = [cost(Dist), _],
+	(Dist =< 3 -> reverse(PathFromStation, [_ | PathToStation]),
+	    do_command([oscar, console, 'Im going on an adventure!']),
+		agent_do_moves(oscar, PathToStation),
+		agent_topup_energy(oscar, ChargerObj),
+	    do_command([oscar, console, 'Im coming home!']),
+		agent_do_moves(oscar, PathFromStation),
+		Charged = true
+	; recharge_and_return(Chargers, Energy, CurPos, Charged)).
 
 recharge_if_needed(FoundObjects, NewFoundObjects) :-
 	FoundObjects = objects_list(_, Chargers),
@@ -292,9 +319,8 @@ recharge_if_needed(FoundObjects, NewFoundObjects) :-
 		recharge_if_possible(MoreChargers, Energy, CurPos)
 	).
 
-recharge_if_possible([], Energy, _) :-
-	Energy >= 10.
 recharge_if_possible([Charger | Chargers], Energy, CurPos) :-
+    Energy =< 30,
 	Charger = map_object(ChargerObj, Pos),
 	solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,Cost,_NewPos),
 	Cost = [cost(Dist), _],
@@ -303,6 +329,8 @@ recharge_if_possible([Charger | Chargers], Energy, CurPos) :-
 		agent_topup_energy(oscar, ChargerObj)
 	; recharge_if_possible(Chargers, Energy, CurPos)
 	).
+
+recharge_if_possible(_, _, _).
 
 do_get_closest_oracle(CurPos, [Oracle|Oracles], Closest):-
     Oracle = map_object(_, Pos),

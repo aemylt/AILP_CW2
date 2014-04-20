@@ -31,14 +31,17 @@ solve_task(Task,Cost):-
 
 solve_task_top(go(Target),[[c(0,P), P]],R,Cost,NewPos) :-
     map_distance(P, Target, Dist),
-    solve_task_astar(go(Target),[[Dist, c(0,P), P]],R,Cost,NewPos).
+	empty_assoc(SearchedList),
+    solve_task_astar(go(Target),[[Dist, c(0,P), P]],R,Cost,NewPos, SearchedList).
 
 solve_task_top(adjacent(Target),[[c(0,P), P]],R,Cost,NewPos) :-
     map_distance(P, Target, Dist),
-    solve_task_astar(adjacent(Target),[[Dist, c(0,P), P]],R,Cost,NewPos).
+	empty_assoc(SearchedList),
+    solve_task_astar(adjacent(Target),[[Dist, c(0,P), P]],R,Cost,NewPos, SearchedList).
 
 solve_task_top(Task,[[c(0,P), P]],R,Cost,NewPos) :-
-    solve_task_bf(Task,[[c(0,P), P]],R,Cost,NewPos).
+	empty_assoc(SearchedList),
+    solve_task_bf(Task,[[c(0,P), P]],R,Cost,NewPos,SearchedList).
 
 %% backtracking depth-first search, needs to be changed to agenda-based A*
 solve_task_bt(Task,Current,Depth,RPath,[cost(Cost),depth(Depth)],NewPos) :-
@@ -51,23 +54,24 @@ solve_task_bt(Task,Current,D,RR,Cost,NewPos) :-
 	F1 is F+C,
 	solve_task_bt(Task,[c(F1,P1),R|RPath],D1,RR,Cost,NewPos). % backtracking search
 
-solve_task_astar(Task,Current,RPath,CostList,NewPos) :-
+solve_task_astar(Task,Current,RPath,CostList,NewPos,_) :-
    % Because this is bf the first item in RPath will always be the shortest
    Current = [CurList | _],
    CurList = [ _ | Cur],
    Cur = [c(Depth, _) | _],
    CostList = [cost(Cost), depth(Depth)],
    achieved(Task,Cur,RPath,Cost,NewPos).
-solve_task_astar(Task,Current,RR,Cost,NewPos) :-
+solve_task_astar(Task,Current,RR,Cost,NewPos,SearchedList) :-
    Current = [CurList | OtherRPaths],
    CurList = [_ | Cur],
    Cur = [c(_,P)|RPath],
-   children(P, Children, RPath),
+   children(P, Children, RPath, SearchedList),
+   populate_searched_list(SearchedList, Children, NewSearchedList),
    (Task = go(Pos) -> Target = Pos; Task = adjacent(Pos) -> Target = Pos),
    calc_children_costs_astar(Target, Cur, Children, ChildrenCosts),
    append(OtherRPaths, ChildrenCosts, NewRPath),
    sort(NewRPath, SortedRPath),
-   solve_task_astar(Task, SortedRPath, RR, Cost, NewPos).
+   solve_task_astar(Task, SortedRPath, RR, Cost, NewPos, NewSearchedList).
 
 % (Children, [c(C,P),P])
 calc_children_costs_astar(Target, Cur, Children, ChildCosts) :-
@@ -91,10 +95,12 @@ do_children_costs_astar(Target, Cur, [Child|Children], PastCosts, ChildCosts) :-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 do_find_stuff(FoundObjects, MapObjects, CurPos, OraclePath) :-
 	do_command([oscar, console, 'Searching...']),
-	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], OraclePath),
-	do_command([oscar, console, 'Done searching']).
+	empty_assoc(SearchedList),
+	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], OraclePath, SearchedList),
+	do_command([oscar, console, 'Done searching']),
+	!.
 
-find_stuff(MapObjects, MapObjects, Paths, OraclePath) :-
+find_stuff(MapObjects, MapObjects, Paths, OraclePath, _) :-
 	Paths = [NextPath | _],
 	NextPath = path(Depth, _),
 	Depth >= 10, % Limits the search depth to 10
@@ -104,11 +110,12 @@ find_stuff(MapObjects, MapObjects, Paths, OraclePath) :-
 	; true
 	),
 	!.
-find_stuff(FoundObjects, MapObjects, Paths, OraclePath) :-
+find_stuff(FoundObjects, MapObjects, Paths, OraclePath, SearchedList) :-
 	Paths = [CurPath | OtherPaths],
 	CurPath = path(_, [CurPos | RestOfPath]),
 	% Find the empty spaces around us (That aren't already in this path)
-	children(CurPos, Children, RestOfPath),
+	children(CurPos, Children, RestOfPath, SearchedList),
+	populate_searched_list(SearchedList, Children, NewSearchedList),
 	calc_children_costs(CurPath, Children, ChildrenCosts),
 	append(OtherPaths, ChildrenCosts, NewPaths),
 	% Find the oracles and stations around us that we don't already know about
@@ -122,7 +129,12 @@ find_stuff(FoundObjects, MapObjects, Paths, OraclePath) :-
 	append(Oracles, NewOracles, FoundOracles),
 	append(Chargers, NewChargers, FoundChargers),
 	% Continue recursing
-	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths, OraclePath).
+	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths, OraclePath, NewSearchedList).
+
+populate_searched_list(NewAssoc, [], NewAssoc).
+populate_searched_list(Assoc, [Child | Children], ReturnAssoc) :-
+	put_assoc(Child, Assoc, 1, NewAssoc),
+	populate_searched_list(NewAssoc, Children, ReturnAssoc).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Finds all the unqueried oracles around us that we don't already know about
@@ -164,19 +176,20 @@ filter_objects([Next | OtherObjs], ExistingObjs, Filtered, Valids) :-
 	;  filter_objects(OtherObjs, ExistingObjs, [Next | Filtered], Valids)
 	).
 
-solve_task_bf(Task,Current,RPath,CostList,NewPos) :-
+solve_task_bf(Task,Current,RPath,CostList,NewPos,_) :-
    % Because this is bf the first item in RPath will always be the shortest
    Current = [Cur | _],
    Cur = [c(Depth, _) | _],
    CostList = [cost(Cost), depth(Depth)],
    achieved(Task,Cur,RPath,Cost,NewPos).
-solve_task_bf(Task,Current,RR,Cost,NewPos) :-
+solve_task_bf(Task,Current,RR,Cost,NewPos,SearchedList) :-
    Current = [Cur | OtherRPaths],
    Cur = [c(_,P)|RPath],
-   children(P, Children, RPath),
+   children(P, Children, RPath, SearchedList),
+   populate_searched_list(SearchedList, Children, NewSearchedList),
    calc_children_costs(Cur, Children, ChildrenCosts),
    append(OtherRPaths, ChildrenCosts, NewRPath),
-   solve_task_bf(Task, NewRPath, RR, Cost, NewPos).
+   solve_task_bf(Task, NewRPath, RR, Cost, NewPos, NewSearchedList).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Finds all of the empty positions around Current that haven't already been
@@ -185,9 +198,9 @@ solve_task_bf(Task,Current,RR,Cost,NewPos) :-
 %% @returns Children [p]: The empty positions around Current
 %% @param RPath [p]: The already visited positions in this path
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-children(Current, Children, RPath) :-
+children(Current, Children, RPath, SearchedList) :-
    findall(NewPos, map_adjacent(Current, NewPos, empty), AllChildren),
-   filter_children(AllChildren, RPath, Children).
+   filter_children(AllChildren, RPath, Children, SearchedList).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Calculates the path to and the cost of a position around the current one
@@ -223,14 +236,14 @@ achieved(adjacent(P),Current,RPath,Cost,NewPos) :-
 search(F,N,N,1):-
 	map_adjacent(F,N,empty).
 
-filter_children(Children, RPath, Valids) :-
-   filter_loop(Children, RPath, [], Valids).
+filter_children(Children, RPath, Valids, SearchedList) :-
+   filter_loop(Children, RPath, [], Valids, SearchedList).
 
-filter_loop([], _, Valids, Valids).
-filter_loop([Child|Children], RPath, Filtered, Valids) :-
-   (\+ memberchk(Child, RPath) ->
-      filter_loop(Children, RPath, [Child|Filtered], Valids)
-   ; filter_loop(Children, RPath, Filtered, Valids)
+filter_loop([], _, Valids, Valids, _).
+filter_loop([Child|Children], RPath, Filtered, Valids, SearchedList) :-
+   (\+ memberchk(Child, RPath), \+ get_assoc(Child, SearchedList, _) ->
+      filter_loop(Children, RPath, [Child|Filtered], Valids, SearchedList)
+   ; filter_loop(Children, RPath, Filtered, Valids, SearchedList)
    ).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -256,10 +269,10 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
 	ClosestOracle = path(_, PathFromOracle),
 	reverse(PathFromOracle, [_ | PathToOracle]),
 	agent_do_moves(oscar, PathToOracle),
-	Objects = objects_list([map_object(Oracle, _)|RemainingOracles], _),
 	% We don't care if this fails. do_find_stuff probably couldn't find an
 	% oracle so gave us an empty space to go to instead
-	(agent_ask_oracle(oscar, Oracle, link, Link) ->
+	(Objects = objects_list([map_object(Oracle, _)|RemainingOracles], _) ->
+		agent_ask_oracle(oscar, Oracle, link, Link),
 		filter_actors(Unfiltered, Link, Filtered)
 	; Filtered = Unfiltered
 	),
@@ -290,10 +303,11 @@ recharge_if_needed(FoundObjects, NewFoundObjects) :-
 		do_find_stuff(FoundObjects, NewFoundObjects, CurPos, _),
 		NewFoundObjects = objects_list(_, MoreChargers),
 		recharge_if_possible(MoreChargers, Energy, CurPos)
-	).
+	),
+	!.
 
 recharge_if_possible([], Energy, _) :-
-	Energy >= 10.
+	Energy >= 20.
 recharge_if_possible([Charger | Chargers], Energy, CurPos) :-
 	Charger = map_object(ChargerObj, Pos),
 	solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,Cost,_NewPos),

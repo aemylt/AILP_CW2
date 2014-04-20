@@ -94,10 +94,15 @@ do_find_stuff(FoundObjects, MapObjects, CurPos, OraclePath) :-
 	find_stuff(FoundObjects, MapObjects, [path(0, [CurPos])], OraclePath),
 	do_command([oscar, console, 'Done searching']).
 
-find_stuff(MapObjects, MapObjects, Paths, _) :-
+find_stuff(MapObjects, MapObjects, Paths, OraclePath) :-
 	Paths = [NextPath | _],
 	NextPath = path(Depth, _),
 	Depth >= 10, % Limits the search depth to 10
+	% TODO: For now the search is thick and it just picks the first space on the
+	% edge of the search space
+	(var(OraclePath) -> OraclePath = NextPath
+	; true
+	),
 	!.
 find_stuff(FoundObjects, MapObjects, Paths, OraclePath) :-
 	Paths = [CurPath | OtherPaths],
@@ -252,8 +257,12 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects) :-
 	reverse(PathFromOracle, [_ | PathToOracle]),
 	agent_do_moves(oscar, PathToOracle),
 	Objects = objects_list([map_object(Oracle, _)|RemainingOracles], _),
-	agent_ask_oracle(oscar, Oracle, link, Link),
-	filter_actors(Unfiltered, Link, Filtered),
+	% We don't care if this fails. do_find_stuff probably couldn't find an
+	% oracle so gave us an empty space to go to instead
+	(agent_ask_oracle(oscar, Oracle, link, Link) ->
+		filter_actors(Unfiltered, Link, Filtered)
+	; Filtered = Unfiltered
+	),
 	keep_filtering_actors(Filtered, Actor, objects_list(RemainingOracles, Chargers)),
 	!.
 
@@ -283,13 +292,13 @@ recharge_if_needed(FoundObjects, NewFoundObjects) :-
 		recharge_if_possible(MoreChargers, Energy, CurPos)
 	).
 
-% No base case rule because if no chargers are left then we can't recharge
 recharge_if_possible([], Energy, _) :-
 	Energy >= 10.
 recharge_if_possible([Charger | Chargers], Energy, CurPos) :-
 	Charger = map_object(ChargerObj, Pos),
-	solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,cost(Cost),_NewPos),
-	(Cost =< Energy -> reverse(PathFromStation, [_ | PathToStation]),
+	solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,Cost,_NewPos),
+	Cost = [cost(Dist), _],
+	(Dist =< Energy -> reverse(PathFromStation, [_ | PathToStation]),
 		agent_do_moves(oscar, PathToStation),
 		agent_topup_energy(oscar, ChargerObj)
 	; recharge_if_possible(Chargers, Energy, CurPos)

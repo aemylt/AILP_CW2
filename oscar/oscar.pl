@@ -82,7 +82,7 @@ do_children_costs_astar(Target, Cur, [Child|Children], PastCosts, ChildCosts) :-
    Cur = [c(OldDepth, _)|RPath],
    Depth is OldDepth+1,
    map_distance(Child, Target, Dist),
-   do_children_costs_astar(Target, Cur, Children, [[Dist, c(Depth, Child) | [Child|RPath]] | PastCosts], ChildCosts).
+   do_children_costs_astar(Target, Cur, Children, [[Dist + Depth, c(Depth, Child) | [Child|RPath]] | PastCosts], ChildCosts).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Finds a list of objects that we haven't already found.

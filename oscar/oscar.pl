@@ -375,27 +375,28 @@ move_and_charge(Pos, [NextPos|Path], Chargers, Charged) :-
     agent_current_energy(oscar, Energy),
     Energy > 0,
     (Charged -> NewCharged = Charged
-    ; recharge_and_return(Chargers, Energy, Pos, NewCharged)),
+    ; recharge_and_return(Chargers, Energy, Pos, NextPos, NewCharged)),
     agent_do_move(oscar, NextPos),
     move_and_charge(NextPos, Path, Chargers, NewCharged).
 
-recharge_and_return(_, Energy, _, false) :-
+recharge_and_return(_, Energy, _, _, false) :-
     Energy >= 70.
-recharge_and_return([], _, _, false).
-recharge_and_return(_, _, CurPos, true) :-
+recharge_and_return([], _, _, _, false).
+recharge_and_return(_, _, CurPos, _, true) :-
     map_adjacent(CurPos, _, c(CID)),
     agent_topup_energy(oscar, c(CID)).
-recharge_and_return([Charger|Chargers], Energy, CurPos, Charged) :-
+recharge_and_return([Charger|Chargers], Energy, CurPos, NextPos, Charged) :-
     Charger = map_object(ChargerObj, Pos),
     solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,Cost,_NewPos),
     Cost = [cost(Dist), _],
 	(Dist =< 3 -> reverse(PathFromStation, [_ | PathToStation]),
-		agent_do_moves(oscar, PathToStation),
-		agent_topup_energy(oscar, ChargerObj),
-		PathFromStation = [_ | PathBackAgain],
-		agent_do_moves(oscar, PathBackAgain),
-		Charged = true
-	; recharge_and_return(Chargers, Energy, CurPos, Charged)).
+	    (PathToStation = [NextPos|_] -> true
+        ;   agent_do_moves(oscar, PathToStation),
+            agent_topup_energy(oscar, ChargerObj),
+            PathFromStation = [_ | PathBackAgain],
+            agent_do_moves(oscar, PathBackAgain),
+            Charged = true)
+	; recharge_and_return(Chargers, Energy, CurPos, NextPos, Charged)).
 
 % TODO: Add to SearchedFrom
 recharge_if_needed(FoundObjects, NewFoundObjects) :-

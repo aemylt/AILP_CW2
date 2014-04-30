@@ -374,29 +374,33 @@ move_and_charge(_, [], _, _).
 move_and_charge(Pos, [NextPos|Path], Chargers, Charged) :-
     agent_current_energy(oscar, Energy),
     Energy > 0,
-    (Charged -> NewCharged = Charged
-    ; recharge_and_return(Chargers, Energy, Pos, NextPos, NewCharged)),
-    agent_do_move(oscar, NextPos),
-    move_and_charge(NextPos, Path, Chargers, NewCharged).
+    (Charged -> NewCharged = true, NewPos = NextPos, NewPath = Path
+    ; recharge_at_station(Chargers, Energy, Pos, NewCharged),
+        (NewCharged -> agent_current_position(oscar, CurPos),
+            reverse(Path, [Target|_]),
+            solve_task_top(go(Target),[[c(0,CurPos), CurPos]],PathFromOracle,_,_),
+            reverse(PathFromOracle, [_|PathToOracle]),
+        PathToOracle = [NewPos|NewPath]
+        ; NewPos = NextPos, NewPath = Path)
+        ),
+    agent_do_move(oscar, NewPos),
+    move_and_charge(NewPos, NewPath, Chargers, NewCharged).
 
-recharge_and_return(_, Energy, _, _, false) :-
+recharge_at_station(_, Energy, _, false) :-
     Energy >= 70.
-recharge_and_return([], _, _, _, false).
-recharge_and_return(_, _, CurPos, _, true) :-
+recharge_at_station([], _, _, false).
+recharge_at_station(_, _, CurPos, true) :-
     map_adjacent(CurPos, _, c(CID)),
     agent_topup_energy(oscar, c(CID)).
-recharge_and_return([Charger|Chargers], Energy, CurPos, NextPos, Charged) :-
+recharge_at_station([Charger|Chargers], Energy, CurPos, Charged) :-
     Charger = map_object(ChargerObj, Pos),
     solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,Cost,_NewPos),
     Cost = [cost(Dist), _],
 	(Dist =< 3 -> reverse(PathFromStation, [_ | PathToStation]),
-	    (PathToStation = [NextPos|_] -> Charged = false
-        ;   agent_do_moves(oscar, PathToStation),
-            agent_topup_energy(oscar, ChargerObj),
-            PathFromStation = [_ | PathBackAgain],
-            agent_do_moves(oscar, PathBackAgain),
-            Charged = true)
-	; recharge_and_return(Chargers, Energy, CurPos, NextPos, Charged)).
+	    agent_do_moves(oscar, PathToStation),
+        agent_topup_energy(oscar, ChargerObj),
+        Charged = true
+	; recharge_at_station(Chargers, Energy, CurPos, Charged)).
 
 % TODO: Add to SearchedFrom
 recharge_if_needed(FoundObjects, NewFoundObjects) :-

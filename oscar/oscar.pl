@@ -8,16 +8,36 @@
 
 candidate_number(17655).
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Style Node: Often we use functions that require a certain input parameter to
+%% function correctly (eg filter_objects required Filtered to be an empty list
+%% originally). Therefore we create a wrapper method for these functions and
+%% append the wrapper with do_ (eg do_filter_objects).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% A data structure for storing an object on the map and it's position
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 map_object(c(_), p(_, _)).
 map_object(o(_), p(_, _)).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% A data structure for storing an object on the map and a path to it
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 object_path(map_object(_, _), Path) :-
 	is_list(Path).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Stores a list for each map_object type
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 objects_list(Oracles, Chargers) :-
 	is_list(Oracles),
 	is_list(Chargers).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Stores a past as a list of positions, as well as it's length
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 path(Depth, Path) :-
 	integer(Depth),
 	is_list(Path).
@@ -91,7 +111,7 @@ do_children_costs_astar(Target, Cur, [Child|Children], PastCosts, ChildCosts) :-
 %% @returns MapObjects [map_object]: The existing list of objects with the new
 %list appended to it
 %% @param CurPos p: Current agent position
-%% @returns OraclePath [p]: The path to the nearest oracle
+%% @returns OraclePath [p]: The path to the nearest oracle, or an empty position
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 do_find_stuff(FoundObjects, MapObjects, CurPos, OraclePath, SearchedFrom) :-
 	do_command([oscar, console, 'Searching...']),
@@ -130,11 +150,26 @@ find_stuff(FoundObjects, MapObjects, Paths, OraclePath, SearchedList, SearchedFr
 	% Continue recursing
 	find_stuff(objects_list(FoundOracles, FoundChargers), MapObjects, NewPaths, OraclePath, NewSearchedList, SearchedFrom).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Adds the list of child positions to the list of positions that have been
+%% searched from before
+%% @param Assoc assoc: The associative list to append to
+%% @param Children [p]: The list of children to add to the list
+%% @returns ReturnAssoc assoc: The resulting associative list
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 populate_searched_list(NewAssoc, [], NewAssoc).
 populate_searched_list(Assoc, [Child | Children], ReturnAssoc) :-
 	put_assoc(Child, Assoc, 1, NewAssoc),
 	populate_searched_list(NewAssoc, Children, ReturnAssoc).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Finds a path to a position that lies somewhere we haven't searched well before
+%% @param Paths [path]: The list of potential paths
+%% @param DepthLim int: How far around a previously searched position should be
+%% considered as well searched
+%% @param SearchedFrom [p]: A list positions previously searched from
+%% @returns GoodPath [p]: The best path we can find
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 do_find_good_outer_path(Paths, DepthLim, SearchedFrom, GoodPath) :-
 	DepthGuess is DepthLim / 2,
 	(find_good_outer_path(Paths, DepthGuess, SearchedFrom, ReturnedPath) ->
@@ -149,6 +184,8 @@ find_good_outer_path([Path | Paths], Radius, SearchedFrom, PathToReturn) :-
 	; find_good_outer_path(Paths, Radius, SearchedFrom, PathToReturn)
 	).
 
+% Considers a path as good if it does not end at a position that has probably
+% been searched from before
 path_is_good(_, [], _).
 path_is_good(Path, [NextPos | SearchedFrom], Radius) :-
 	Path = path(_, [EndPos | _]),
@@ -359,6 +396,13 @@ recharge_if_needed(FoundObjects, NewFoundObjects) :-
 	),
 	!.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Recharges the agent if energy is below a threshold and can reach a charger
+%% @param [Chargers] [map_object]: The list of chargers to check
+%% @param Energy int: The amount of available energy
+%% @param CurPos p: The position to search from
+%% @param LastDitch bool: Whether this should fail if it can't recharge
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 recharge_if_possible([Charger | Chargers], Energy, CurPos) :-
     Energy =< 30,
 	Charger = map_object(ChargerObj, Pos),
@@ -370,8 +414,16 @@ recharge_if_possible([Charger | Chargers], Energy, CurPos) :-
 	; recharge_if_possible(Chargers, Energy, CurPos)
 	).
 
+% Only allow now other chargers to be found if this isn't a last ditch attempt
+% to find one.
 recharge_if_possible(_, _, _).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% From a list of oracles, return the closest
+%% @param CurPos p: The position the oracle should be closest to
+%% @param [Oracles] [map_object(o, _)]: The list of oracles to search
+%% @returns map_object(o, _): The closest oracle
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 do_get_closest_oracle(CurPos, [Oracle|Oracles], Closest):-
     Oracle = map_object(_, Pos),
     map_distance(CurPos, Pos, D),

@@ -329,6 +329,7 @@ find_identity(A):-
    create_actor_data(ActorNames, Actors),
    keep_filtering_actors(Actors, Actor, objects_list([],[]), []),
    Actor = actor_data(A, _),
+   do_command([oscar, say, A]),
    !.
 
 keep_filtering_actors([Actor], Actor, _, _).

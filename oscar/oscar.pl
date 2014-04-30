@@ -347,6 +347,7 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects, SearchedFrom) :-
 	% oracle so gave us an empty space to go to instead
 	(NewOracles = [map_object(Oracle, _)|RemainingOracles] ->
 		agent_ask_oracle(oscar, Oracle, link, Link),
+		\+ (Link = 'Sorry, not enough energy', RemainingOracles = []),
 		filter_actors(Unfiltered, Link, Filtered)
 	; Filtered = Unfiltered
 	),
@@ -363,6 +364,7 @@ keep_filtering_actors(Unfiltered, Actor, FoundObjects, SearchedFrom) :-
 	reverse(PathFromOracle, [_ | PathToOracle]),
 	move_and_charge(CurPos, PathToOracle, Chargers, false),
 	agent_ask_oracle(oscar, Oracle, link, Link),
+	\+ (Link = 'Sorry, not enough energy', RemainingOracles = [_]),
 	filter_actors(Unfiltered, Link, Filtered),
 	select(ClosestOracle, RemainingOracles, OraclesLeft),
 	keep_filtering_actors(Filtered, Actor, objects_list(OraclesLeft, Chargers), SearchedFrom),
@@ -401,11 +403,12 @@ recharge_if_needed(FoundObjects, NewFoundObjects) :-
 	FoundObjects = objects_list(_, Chargers),
 	agent_current_energy(oscar, Energy),
 	agent_current_position(oscar, CurPos),
-	(recharge_if_possible(Chargers, Energy, CurPos) -> NewFoundObjects = FoundObjects
+	(recharge_if_possible(Chargers, Energy, CurPos, false) -> NewFoundObjects = FoundObjects
 	; % Last ditch attempt to find a charger near enough
 		do_find_stuff(FoundObjects, NewFoundObjects, CurPos, _, []),
 		NewFoundObjects = objects_list(_, MoreChargers),
-		recharge_if_possible(MoreChargers, Energy, CurPos)
+		!, % If recharge_if_possible fails then we should fail overall
+		recharge_if_possible(MoreChargers, Energy, CurPos, true)
 	),
 	!.
 
@@ -416,7 +419,7 @@ recharge_if_needed(FoundObjects, NewFoundObjects) :-
 %% @param CurPos p: The position to search from
 %% @param LastDitch bool: Whether this should fail if it can't recharge
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-recharge_if_possible([Charger | Chargers], Energy, CurPos) :-
+recharge_if_possible([Charger | Chargers], Energy, CurPos, LastDitch) :-
     Energy =< 30,
 	Charger = map_object(ChargerObj, Pos),
 	solve_task_top(adjacent(Pos),[[c(0,CurPos), CurPos]],PathFromStation,Cost,_NewPos),
@@ -424,12 +427,12 @@ recharge_if_possible([Charger | Chargers], Energy, CurPos) :-
 	(Dist =< Energy -> reverse(PathFromStation, [_ | PathToStation]),
 		agent_do_moves(oscar, PathToStation),
 		agent_topup_energy(oscar, ChargerObj)
-	; recharge_if_possible(Chargers, Energy, CurPos)
+	; recharge_if_possible(Chargers, Energy, CurPos, LastDitch)
 	).
 
 % Only allow now other chargers to be found if this isn't a last ditch attempt
 % to find one.
-recharge_if_possible(_, _, _).
+recharge_if_possible(_, _, _, false).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% From a list of oracles, return the closest

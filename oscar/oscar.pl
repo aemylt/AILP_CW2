@@ -174,9 +174,9 @@ do_find_good_outer_path(Paths, DepthLim, SearchedFrom, GoodPath) :-
 	DepthGuess is DepthLim / 2,
 	(find_good_outer_path(Paths, DepthGuess, SearchedFrom, ReturnedPath) ->
 		GoodPath = ReturnedPath
-		% Not a great path but we can't find anything better
-		% TODO: Maybe pick a random long path instead
-	; Paths = [GoodPath | _ ]
+	; % A long path is more likely to take us away from where we've searched around here
+		do_filter_to_long_paths(Paths, LongPaths),
+		random_member(GoodPath, LongPaths)
 	).
 
 find_good_outer_path([Path | Paths], Radius, SearchedFrom, PathToReturn) :-
@@ -194,6 +194,18 @@ path_is_good(Path, [NextPos | SearchedFrom], Radius) :-
 	(MaybeX < FromX - Radius ; MaybeX > FromX + Radius),
 	(MaybeY < FromY - Radius ; MaybeY > FromY + Radius),
 	path_is_good(Path, SearchedFrom, Radius).
+
+do_filter_to_long_paths(Paths, LongestPaths):-
+	filter_to_long_paths(Paths, 0, [], LongestPaths).
+
+filter_to_long_paths([], _, LongestPaths, LongestPaths).
+filter_to_long_paths([Path | Paths], LongestLen, LongestPaths, ReturnPaths) :-
+	Path = path(Len, _),
+	(Len > LongestLen -> filter_to_long_paths(Paths, Len, [Path], ReturnPaths)
+	; (Len = LongestLen -> filter_to_long_paths(Paths, LongestLen, [Path | LongestPaths], ReturnPaths)
+	  ; filter_to_long_paths(Paths, LongestLen, LongestPaths, ReturnPaths)
+	  )
+	).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Finds all the unqueried oracles around us that we don't already know about

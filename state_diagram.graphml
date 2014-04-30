@@ -335,11 +335,11 @@ oracles we know about<y:LabelModel>
       <data key="d10">
         <y:ArcEdge>
           <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0">
-            <y:Point x="505.26922607421875" y="19.495208740234375"/>
+            <y:Point x="501.9497375488281" y="89.33743286132812"/>
           </y:Path>
           <y:LineStyle color="#000000" type="line" width="1.0"/>
           <y:Arrows source="none" target="standard"/>
-          <y:Arc height="-184.71307373046875" ratio="-1.403078317642212" type="fixedRatio"/>
+          <y:Arc height="-114.79199981689453" ratio="-0.8719586730003357" type="fixedRatio"/>
         </y:ArcEdge>
       </data>
     </edge>
